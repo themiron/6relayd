@@ -14,6 +14,7 @@
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <stddef.h>
 #include <resolv.h>
@@ -83,7 +84,12 @@ int init_dhcpv6_relay(const struct relayd_config *relayd_config)
 // Create server socket
 static int create_socket(uint16_t port)
 {
+#ifdef SOCK_CLOEXEC
 	int sock = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+#else
+	int sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+	sock = fflags(sock, O_CLOEXEC);
+#endif
 	if (sock < 0)
 		return -1;
 

@@ -36,6 +36,7 @@
 #include <sys/wait.h>
 
 #include <fcntl.h>
+#include <sys/syscall.h>
 
 #include "6relayd.h"
 
@@ -189,12 +190,23 @@ int main(int argc, char* const argv[])
 		return 2;
 	}
 
-	if ((epoll = epoll_create1(EPOLL_CLOEXEC)) < 0) {
+#if defined(__NR_epoll_create1) && defined(EPOLL_CLOEXEC)
+	epoll = epoll_create1(EPOLL_CLOEXEC);
+#else
+	epoll = epoll_create(32);
+	epoll = fflags(epoll, O_CLOEXEC);
+#endif
+	if (epoll < 0) {
 		syslog(LOG_ERR, "Unable to open epoll: %s", strerror(errno));
 		return 2;
 	}
 
+#ifdef SOCK_CLOEXEC
 	ioctl_sock = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+#else
+	ioctl_sock = socket(AF_INET6, SOCK_DGRAM, 0);
+	ioctl_sock = fflags(ioctl_sock, O_CLOEXEC);
+#endif
 
 	if ((rtnl_socket = relayd_open_rtnl_socket()) < 0) {
 		syslog(LOG_ERR, "Unable to open socket: %s", strerror(errno));
@@ -381,7 +393,12 @@ out:
 
 int relayd_open_rtnl_socket(void)
 {
+#ifdef SOCK_CLOEXEC
 	int sock = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+#else
+	int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	sock = fflags(sock, O_CLOEXEC);
+#endif
 
 	// Connect to the kernel netlink interface
 	struct sockaddr_nl nl = {.nl_family = AF_NETLINK};

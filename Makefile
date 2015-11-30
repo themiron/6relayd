@@ -11,8 +11,8 @@ SRC      = src
 
 top ?= $(CURDIR)
 
-OBJS := 6relayd.o router.o dhcpv6.o ndp.o md5.o dhcpv6-ia.o
-HDRS := 6relayd.h router.h dhcpv6.h ndp.h md5.h list.h
+OBJS := 6relayd.o router.o dhcpv6.o ndp.o md5.o dhcpv6-ia.o stubs.o
+HDRS := 6relayd.h router.h dhcpv6.h ndp.h md5.h list.h stubs.h
 
 all: $(BUILDDIR) dummy
 	@cd $(BUILDDIR) && $(MAKE) top="$(top)" -f $(top)/Makefile 6relayd

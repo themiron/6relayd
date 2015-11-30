@@ -61,7 +61,12 @@ int dhcpv6_init_ia(const struct relayd_config *relayd_config, int dhcpv6_socket)
 	config = relayd_config;
 	socket_fd = dhcpv6_socket;
 
+#if defined(TFD_CLOEXEC) && defined(TFD_NONBLOCK)
 	reconf_event.socket = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+#else
+	reconf_event.socket = timerfd_create(CLOCK_MONOTONIC, 0);
+	reconf_event.socket = fflags(reconf_event.socket, O_CLOEXEC | O_NONBLOCK);
+#endif
 	if (reconf_event.socket < 0) {
 		syslog(LOG_ERR, "Failed to create timer: %s", strerror(errno));
 		return -1;

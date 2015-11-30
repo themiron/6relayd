@@ -20,6 +20,7 @@
 #include <syslog.h>
 
 #include "list.h"
+#include "stubs.h"
 
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof((arr)[0]))
 

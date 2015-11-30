@@ -75,8 +75,13 @@ int init_router_discovery_relay(const struct relayd_config *relayd_config)
 	if (config->enable_router_discovery_server) {
 		for (size_t i = 0; i < config->slavecount; ++i) {
 			struct relayd_interface *iface = &config->slaves[i];
+#if defined(TFD_CLOEXEC) && defined(TFD_NONBLOCK)
 			iface->timer_rs.socket = timerfd_create(CLOCK_MONOTONIC,
 					TFD_CLOEXEC | TFD_NONBLOCK);
+#else
+			iface->timer_rs.socket = timerfd_create(CLOCK_MONOTONIC, 0);
+			iface->timer_rs.socket = fflags(iface->timer_rs.socket, O_CLOEXEC | O_NONBLOCK);
+#endif
 			iface->timer_rs.handle_event = send_router_advert;
 
 			if (iface->timer_rs.socket < 0) {
@@ -139,7 +144,12 @@ static void sigusr1_refresh(_unused int signal)
 static int open_icmpv6_socket(struct icmp6_filter *filt,
 		struct ipv6_mreq *slave_mreq)
 {
+#ifdef SOCK_CLOEXEC
 	int sock = socket(AF_INET6, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_ICMPV6);
+#else
+	int sock = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+	sock = fflags(sock, O_CLOEXEC);
+#endif
 	if (sock < 0)
 		return -1;
 

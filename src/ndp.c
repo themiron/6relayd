@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -119,9 +120,15 @@ int init_ndp_proxy(const struct relayd_config *relayd_config)
 		list_add(&n->head, &neighbors);
 	}
 
+#if defined(SOCK_CLOEXEC) && defined(SOCK_NONBLOCK)
 	// Create socket for intercepting NDP
 	int sock = socket(AF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
 			htons(ETH_P_ALL)); // ETH_P_ALL for ingress + egress
+#else
+	int sock = socket(AF_PACKET, SOCK_DGRAM,
+			htons(ETH_P_ALL)); // ETH_P_ALL for ingress + egress
+	sock = fflags(sock, O_CLOEXEC | O_NONBLOCK);
+#endif
 	if (sock < 0) {
 		syslog(LOG_ERR, "Unable to open packet socket: %s",
 				strerror(errno));
@@ -150,7 +157,12 @@ int init_ndp_proxy(const struct relayd_config *relayd_config)
 	relayd_register_event(&ndp_event_solicit);
 
 	// Open ICMPv6 socket
+#ifdef SOCK_CLOEXEC
 	ping_socket = socket(AF_INET6, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_ICMPV6);
+#else
+	ping_socket = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+	ping_socket = fflags(ping_socket, O_CLOEXEC);
+#endif
 
 	int val = 2;
 	setsockopt(ping_socket, IPPROTO_RAW, IPV6_CHECKSUM, &val, sizeof(val));
