@@ -33,7 +33,10 @@
 #define NS_MAXCDNAME 255 /* max compressed domain name length */
 #define NS_MAXLABEL   63 /* max label length */
 
-int dn_encode(const char *src, uint8_t *dst, int length)
+int __attribute__ ((weak))
+dn_comp(const char *src, uint8_t *dst, int length, 
+	uint8_t __attribute__((unused)) **dnptrs,
+	uint8_t __attribute__((unused)) **lastdnptr)
 {
 	uint8_t *buf, *ptr;
 	int len;
@@ -69,14 +72,16 @@ int dn_encode(const char *src, uint8_t *dst, int length)
  && (__UCLIBC_MINOR__ < 9 || (__UCLIBC_MINOR__ == 9 && __UCLIBC_SUBLEVEL__ < 31)))
 
 #ifdef __NR_timerfd_create
-int timerfd_create (clockid_t __clock_id, int __flags)
+int __attribute__ ((weak))
+timerfd_create (clockid_t __clock_id, int __flags)
 {
 	return syscall(__NR_timerfd_create, __clock_id, __flags);
 }
 #endif
 
 #ifdef __NR_timerfd_settime
-int timerfd_settime (int __ufd, int __flags,
+int __attribute__ ((weak))
+timerfd_settime (int __ufd, int __flags,
 			    __const struct itimerspec *__utmr,
 			    struct itimerspec *__otmr)
 {
@@ -85,7 +90,8 @@ int timerfd_settime (int __ufd, int __flags,
 #endif
 
 #ifdef __NR_timerfd_gettime
-int timerfd_gettime (int __ufd, struct itimerspec *__otmr)
+int __attribute__ ((weak))
+timerfd_gettime (int __ufd, struct itimerspec *__otmr)
 {
 	return syscall(__NR_timerfd_create, __ufd, __otmr);
 }
