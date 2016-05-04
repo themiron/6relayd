@@ -295,7 +295,7 @@ static void apply_lease(struct relayd_interface *iface, struct assignment *a, bo
 	for (size_t i = 0; i < iface->pd_addr_len; ++i) {
 		struct in6_addr prefix = iface->pd_addr[i].addr;
 		prefix.s6_addr32[1] |= htonl(a->assigned);
-		relayd_setup_route(&prefix, a->length, iface, &a->peer.sin6_addr, add);
+		relayd_setup_route(&prefix, a->length, iface, &a->peer.sin6_addr, 1024, add);
 	}
 }
 

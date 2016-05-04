@@ -320,7 +320,8 @@ static void handle_solicit(void *addr, void *data, size_t len,
 
 
 void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
-		const struct relayd_interface *iface, const struct in6_addr *gw, bool add)
+		const struct relayd_interface *iface, const struct in6_addr *gw,
+		int metric, bool add)
 {
 	struct req {
 		struct nlmsghdr nh;
@@ -331,6 +332,8 @@ void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
 		uint32_t ifindex;
 		struct rtattr rta_table;
 		uint32_t table;
+		struct rtattr rta_prio;
+		uint32_t prio;
 		struct rtattr rta_gw;
 		struct in6_addr gw;
 	} req = {
@@ -342,6 +345,8 @@ void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
 		iface->ifindex,
 		{sizeof(struct rtattr) + sizeof(uint32_t), RTA_TABLE},
 		RT_TABLE_MAIN,
+		{sizeof(struct rtattr) + sizeof(uint32_t), RTA_PRIORITY},
+		metric,
 		{sizeof(struct rtattr) + sizeof(struct in6_addr), RTA_GATEWAY},
 		IN6ADDR_ANY_INIT,
 	};
@@ -352,7 +357,7 @@ void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
 	if (add) {
 		req.nh.nlmsg_type = RTM_NEWROUTE;
 		req.nh.nlmsg_flags |= (NLM_F_CREATE | NLM_F_REPLACE);
-		req.rtm.rtm_protocol = RTPROT_BOOT;
+		req.rtm.rtm_protocol = RTPROT_STATIC;
 		req.rtm.rtm_scope = (gw) ? RT_SCOPE_UNIVERSE : RT_SCOPE_LINK;
 		req.rtm.rtm_type = RTN_UNICAST;
 	} else {
@@ -360,8 +365,8 @@ void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
 		req.rtm.rtm_scope = RT_SCOPE_NOWHERE;
 	}
 
-	size_t reqlen = (gw) ? sizeof(req) : offsetof(struct req, rta_gw);
-	send(rtnl_event.socket, &req, reqlen, MSG_DONTWAIT);
+	req.nh.nlmsg_len = (gw) ? sizeof(req) : offsetof(struct req, rta_gw);
+	send(rtnl_event.socket, &req, req.nh.nlmsg_len, MSG_DONTWAIT);
 }
 
 // Use rtnetlink to modify kernel routes
@@ -376,7 +381,7 @@ static void setup_route(struct in6_addr *addr, struct relayd_interface *iface,
 	if (!iface || !config->enable_route_learning)
 		return;
 
-	relayd_setup_route(addr, 128, iface, NULL, add);
+	relayd_setup_route(addr, 128, iface, NULL, 1024, add);
 }
 
 static void free_neighbor(struct ndp_neighbor *n)
