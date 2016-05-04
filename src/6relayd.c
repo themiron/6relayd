@@ -660,3 +660,11 @@ void relayd_urandom(void *data, size_t len)
 {
 	read(urandom_fd, data, len);
 }
+
+
+time_t relayd_monotonic_time(void)
+{
+	struct timespec ts;
+	syscall(SYS_clock_gettime, CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}

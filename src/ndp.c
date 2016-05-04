@@ -262,7 +262,7 @@ static void handle_solicit(void *addr, void *data, size_t len,
 			ll->sll_pkttype != PACKET_OUTGOING)
 		return; // Looped back
 
-	time_t now = time(NULL);
+	time_t now = relayd_monotonic_time();
 
 	struct ndp_neighbor *n = find_neighbor(&req->nd_ns_target, false);
 	if (n && (n->iface || abs(n->timeout - now) < 5)) {
@@ -423,7 +423,7 @@ static bool match_neighbor(struct ndp_neighbor *n, struct in6_addr *addr)
 
 static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict)
 {
-	time_t now = time(NULL);
+	time_t now = relayd_monotonic_time();
 	struct ndp_neighbor *n, *e;
 	list_for_each_entry_safe(n, e, &neighbors, head) {
 		if ((!strict && match_neighbor(n, addr)) ||
@@ -457,13 +457,13 @@ static void modify_neighbor(struct in6_addr *addr,
 		n->addr = *addr;
 		n->iface = iface;
 		if (!n->iface)
-			time(&n->timeout);
+			n->timeout = relayd_monotonic_time();
 		list_add(&n->head, &neighbors);
 		++neighbor_count;
 		setup_route(addr, n->iface, add);
 	} else if (n->iface == iface) {
 		if (!n->iface)
-			time(&n->timeout);
+			n->timeout = relayd_monotonic_time();
 	} else if (iface && (!n->iface ||
 			(!iface->external && n->iface->external))) {
 		setup_route(addr, n->iface, false);

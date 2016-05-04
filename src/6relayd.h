@@ -127,6 +127,7 @@ void relayd_urandom(void *data, size_t len);
 void relayd_setup_route(const struct in6_addr *addr, int prefixlen,
 		const struct relayd_interface *iface, const struct in6_addr *gw,
 		int metric, bool add);
+time_t relayd_monotonic_time(void);
 
 
 // Exported module initializers
