@@ -545,7 +545,7 @@ static void forward_router_advertisement(uint8_t *data, size_t len)
 		}
 
 		if (config->always_rewrite_dns && domain_ptr && domain_len > 0)
-			memset(domain_ptr, 0, domain_len);
+			memset(domain_ptr - 4, 0, domain_len + 4);
 
 		relayd_forward_packet(router_discovery_event.socket,
 			&all_nodes, &iov, 1, &config->slaves[i]);
