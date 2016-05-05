@@ -56,7 +56,6 @@ static void set_stop(_unused int signal);
 static void wait_child(_unused int signal);
 static int open_interface(struct relayd_interface *iface,
 		const char *ifname, bool external);
-static void relayd_receive_packets(struct relayd_event *event);
 
 
 int main(int argc, char* const argv[])
@@ -600,7 +599,7 @@ struct relayd_interface* relayd_get_interface_by_name(const char *name)
 
 
 // Convenience function to receive and do basic validation of packets
-static void relayd_receive_packets(struct relayd_event *event)
+void relayd_receive_packets(struct relayd_event *event)
 {
 	uint8_t data_buf[RELAYD_BUFFER_SIZE], cmsg_buf[128];
 	union {

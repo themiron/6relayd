@@ -115,6 +115,7 @@ struct relayd_config {
 // Exported main functions
 int relayd_open_rtnl_socket(void);
 int relayd_register_event(struct relayd_event *event);
+void relayd_receive_packets(struct relayd_event *event);
 ssize_t relayd_forward_packet(int socket, struct sockaddr_in6 *dest,
 		struct iovec *iov, size_t iov_len,
 		const struct relayd_interface *iface);

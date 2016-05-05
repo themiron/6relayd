@@ -191,6 +191,8 @@ int init_ndp_proxy(const struct relayd_config *relayd_config)
 
 
 	// Netlink socket, continued...
+	relayd_receive_packets(&rtnl_event);
+
 	group = RTNLGRP_NEIGH;
 	setsockopt(rtnl_event.socket, SOL_NETLINK,
 			NETLINK_ADD_MEMBERSHIP, &group, sizeof(group));
@@ -205,6 +207,8 @@ int init_ndp_proxy(const struct relayd_config *relayd_config)
 		{.ndm_family = AF_INET6}
 	};
 	send(rtnl_event.socket, &req, sizeof(req), MSG_DONTWAIT);
+
+	relayd_receive_packets(&rtnl_event);
 
 	return 0;
 }
