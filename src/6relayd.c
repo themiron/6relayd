@@ -371,6 +371,11 @@ static int open_interface(struct relayd_interface *iface,
 
 	iface->ifindex = ifr.ifr_ifindex;
 
+	// Detect NOARP interface
+	if (ioctl(ioctl_sock, SIOCGIFFLAGS, &ifr) < 0)
+		return -1;
+	iface->noarp = (ifr.ifr_flags & (IFF_POINTOPOINT | IFF_NOARP));
+
 	// Detect MAC-address of interface
 	if (ioctl(ioctl_sock, SIOCGIFHWADDR, &ifr) < 0)
 		goto err;

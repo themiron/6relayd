@@ -35,6 +35,10 @@ static const struct relayd_config *config = NULL;
 
 static void handle_solicit(void *addr, void *data, size_t len,
 		struct relayd_interface *iface);
+static void handle_advert(void *addr, void *data, size_t len,
+		struct relayd_interface *iface);
+static void handle_neighbor(void *addr, void *data, size_t len,
+		struct relayd_interface *iface);
 static void handle_rtnetlink(void *addr, void *data, size_t len,
 		struct relayd_interface *iface);
 static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict);
@@ -52,7 +56,7 @@ static size_t neighbor_count = 0;
 static uint32_t rtnl_seqid = 0;
 
 static int ping_socket = -1;
-static struct relayd_event ndp_event_solicit = {-1, NULL, handle_solicit};
+static struct relayd_event ndp_event_solicit = {-1, NULL, handle_neighbor};
 static struct relayd_event rtnl_event = {-1, NULL, handle_rtnetlink};
 
 
@@ -62,9 +66,10 @@ static struct sock_filter bpf[] = {
 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_ICMPV6, 0, 3),
 	BPF_STMT(BPF_LD | BPF_B | BPF_ABS, sizeof(struct ip6_hdr) +
 			offsetof(struct icmp6_hdr, icmp6_type)),
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ND_NEIGHBOR_SOLICIT, 0, 1),
-	BPF_STMT(BPF_RET | BPF_K, 0xffffffff),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ND_NEIGHBOR_SOLICIT, 2, 0),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ND_NEIGHBOR_ADVERT, 1, 0),
 	BPF_STMT(BPF_RET | BPF_K, 0),
+	BPF_STMT(BPF_RET | BPF_K, 0x7fffffff)
 };
 static const struct sock_fprog bpf_prog = {sizeof(bpf) / sizeof(*bpf), bpf};
 
@@ -236,7 +241,9 @@ static ssize_t send_solicit(struct in6_addr *addr,
 		{&nd_opt_ll, sizeof(nd_opt_ll)}
 	};
 
-	if (mac)
+	if (iface->noarp)
+		iov[1].iov_len = 0;
+	else if (mac)
 		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
 	else
 		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
@@ -271,7 +278,9 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 	advert.nd_na_flags_reserved = ND_NA_FLAG_ROUTER |
 		(source ? ND_NA_FLAG_SOLICITED : 0);
 
-	if (mac)
+	if (iface->noarp)
+		iov[1].iov_len = 0;
+	else if (mac)
 		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
 	else
 		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
@@ -293,7 +302,7 @@ static ssize_t ping6(struct in6_addr *addr,
 		const struct relayd_interface *iface)
 {
 	/* Send solicit directly */
-	if (memcmp(iface->mac, "\0\0\0\0\0\0", 6) == 0)
+	if (iface->noarp)
 		return send_solicit(addr, NULL, iface);
 
 	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
@@ -369,6 +378,64 @@ static void handle_solicit(void *addr, void *data, size_t len,
 
 		if (sent > 0) // Sent a ping, add pending neighbor entry
 			modify_neighbor(&req->nd_ns_target, NULL, true);
+	}
+}
+
+
+// Handle advertisements
+static void handle_advert(void *addr, void *data, size_t len,
+		struct relayd_interface *iface)
+{
+	struct ip6_hdr *ip6 = data;
+	struct nd_neighbor_advert *req = (struct nd_neighbor_advert*)&ip6[1];
+	struct sockaddr_ll *ll = addr;
+
+	if (!iface->noarp)
+		return;
+
+	if (len < sizeof(*ip6) + sizeof(*req))
+		return; // Invalid reqicitation
+
+	if (IN6_IS_ADDR_MULTICAST(&ip6->ip6_dst) &&
+	    (req->nd_na_flags_reserved & ND_NA_FLAG_SOLICITED))
+		return; // Invalid unsolicited
+
+	if (IN6_IS_ADDR_LINKLOCAL(&req->nd_na_target) ||
+			IN6_IS_ADDR_LOOPBACK(&req->nd_na_target) ||
+			IN6_IS_ADDR_MULTICAST(&req->nd_na_target))
+		return; // Invalid target
+
+	char ipbuf[INET6_ADDRSTRLEN];
+	inet_ntop(AF_INET6, &req->nd_na_target, ipbuf, sizeof(ipbuf));
+	syslog(LOG_NOTICE, "Got a NA for %s", ipbuf);
+
+	uint8_t mac[6];
+	relayd_get_interface_mac(iface->ifname, mac);
+	if (!memcmp(ll->sll_addr, mac, sizeof(mac)) &&
+			ll->sll_pkttype != PACKET_OUTGOING)
+		return; // Looped back
+
+	modify_neighbor(&req->nd_na_target, iface, true);
+}
+
+
+// Handle neighbor discovery
+static void handle_neighbor(void *addr, void *data, size_t len,
+		struct relayd_interface *iface)
+{
+	struct ip6_hdr *ip6 = data;
+	struct icmp6_hdr *req = (struct icmp6_hdr*)&ip6[1];
+
+	if (len < sizeof(*ip6) + sizeof(*req))
+		return; // Invalid reqicitation
+
+	switch (req->icmp6_type) {
+	case ND_NEIGHBOR_SOLICIT:
+		handle_solicit(addr, data, len, iface);
+		break;
+	case ND_NEIGHBOR_ADVERT:
+		handle_advert(addr, data, len, iface);
+		break;
 	}
 }
 
