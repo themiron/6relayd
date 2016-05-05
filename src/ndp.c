@@ -40,6 +40,8 @@ static void handle_rtnetlink(void *addr, void *data, size_t len,
 static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict);
 static void modify_neighbor(struct in6_addr *addr, struct relayd_interface *iface,
 		bool add);
+static ssize_t send_solicit(struct in6_addr *addr,
+		uint8_t *mac, const struct relayd_interface *iface);
 static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 		uint8_t *mac, const struct relayd_interface *iface);
 static ssize_t ping6(struct in6_addr *addr,
@@ -214,6 +216,38 @@ void deinit_ndp_proxy()
 }
 
 
+// Send solicitation
+static ssize_t send_solicit(struct in6_addr *addr,
+		uint8_t *mac, const struct relayd_interface *iface)
+{
+	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
+	struct nd_neighbor_solicit solicit = {
+		.nd_ns_hdr = {ND_NEIGHBOR_SOLICIT, 0, 0, {{0}}},
+		.nd_ns_target = *addr
+	};
+	struct {
+		struct nd_opt_hdr hdr;
+		uint8_t mac[6];
+	} nd_opt_ll = {
+		.hdr = {ND_OPT_SOURCE_LINKADDR, 1}
+	};
+	struct iovec iov[2] = {
+		{&solicit, sizeof(solicit)},
+		{&nd_opt_ll, sizeof(nd_opt_ll)}
+	};
+
+	if (mac)
+		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
+	else
+		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
+
+	// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
+	setsockopt(ping_socket, SOL_SOCKET, SO_BINDTODEVICE,
+			iface->ifname, sizeof(iface->ifname));
+	return relayd_forward_packet(ping_socket, &dest, iov, ARRAY_SIZE(iov), iface);
+}
+
+
 // Send advert
 static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 		uint8_t *mac, const struct relayd_interface *iface)
@@ -258,6 +292,10 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 static ssize_t ping6(struct in6_addr *addr,
 		const struct relayd_interface *iface)
 {
+	/* Send solicit directly */
+	if (memcmp(iface->mac, "\0\0\0\0\0\0", 6) == 0)
+		return send_solicit(addr, NULL, iface);
+
 	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
 	struct icmp6_hdr echo = {.icmp6_type = ICMP6_ECHO_REQUEST};
 	struct iovec iov = {&echo, sizeof(echo)};
