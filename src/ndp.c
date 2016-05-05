@@ -307,7 +307,7 @@ static ssize_t ping6(struct in6_addr *addr,
 {
 	/* Send solicit directly */
 	if (iface->noarp)
-		return send_solicit(addr, NULL, iface);
+		return (send_solicit(addr, NULL, iface) > 0);
 
 	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
 	struct icmp6_hdr echo = {.icmp6_type = ICMP6_ECHO_REQUEST};
@@ -316,7 +316,7 @@ static ssize_t ping6(struct in6_addr *addr,
 	// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
 	setsockopt(ping_socket, SOL_SOCKET, SO_BINDTODEVICE,
 			iface->ifname, sizeof(iface->ifname));
-	return relayd_forward_packet(ping_socket, &dest, &iov, 1, iface);
+	return (relayd_forward_packet(ping_socket, &dest, &iov, 1, iface) > 0);
 }
 
 
