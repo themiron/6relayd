@@ -29,4 +29,5 @@ struct ndp_neighbor {
 	struct in6_addr addr;
 	uint8_t len;
 	time_t timeout;
+	bool noarp;
 };

@@ -43,7 +43,7 @@ static void handle_rtnetlink(void *addr, void *data, size_t len,
 		struct relayd_interface *iface);
 static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict);
 static void modify_neighbor(struct in6_addr *addr, struct relayd_interface *iface,
-		bool add);
+		bool add, bool noarp);
 static ssize_t send_solicit(struct in6_addr *addr,
 		uint8_t *mac, const struct relayd_interface *iface);
 static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
@@ -216,7 +216,7 @@ void deinit_ndp_proxy()
 	while (!list_empty(&neighbors)) {
 		struct ndp_neighbor *c = list_first_entry(&neighbors,
 				struct ndp_neighbor, head);
-		modify_neighbor(&c->addr, c->iface, false);
+		modify_neighbor(&c->addr, c->iface, false, false);
 	}
 }
 
@@ -377,7 +377,7 @@ static void handle_solicit(void *addr, void *data, size_t len,
 						&config->slaves[i]);
 
 		if (sent > 0) // Sent a ping, add pending neighbor entry
-			modify_neighbor(&req->nd_ns_target, NULL, true);
+			modify_neighbor(&req->nd_ns_target, NULL, true, false);
 	}
 }
 
@@ -415,7 +415,7 @@ static void handle_advert(void *addr, void *data, size_t len,
 			ll->sll_pkttype != PACKET_OUTGOING)
 		return; // Looped back
 
-	modify_neighbor(&req->nd_na_target, iface, true);
+	modify_neighbor(&req->nd_na_target, iface, true, iface->noarp);
 }
 
 
@@ -560,7 +560,7 @@ static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict)
 
 // Modified our own neighbor-entries
 static void modify_neighbor(struct in6_addr *addr,
-		struct relayd_interface *iface, bool add)
+		struct relayd_interface *iface, bool add, bool noarp)
 {
 	if (!addr || (void*)addr == (void*)iface)
 		return;
@@ -579,6 +579,7 @@ static void modify_neighbor(struct in6_addr *addr,
 		n->iface = iface;
 		if (!n->iface)
 			n->timeout = relayd_monotonic_time();
+		n->noarp = noarp;
 		list_add(&n->head, &neighbors);
 		++neighbor_count;
 		setup_route(addr, n->iface, add);
@@ -586,9 +587,11 @@ static void modify_neighbor(struct in6_addr *addr,
 		if (!n->iface)
 			n->timeout = relayd_monotonic_time();
 	} else if (iface && (!n->iface ||
+			(!noarp && n->noarp) ||
 			(!iface->external && n->iface->external))) {
 		setup_route(addr, n->iface, false);
 		n->iface = iface;
+		n->noarp = noarp;
 		setup_route(addr, n->iface, add);
 	}
 	// TODO: In case a host switches interfaces we might want
@@ -649,16 +652,19 @@ static void handle_rtnetlink(_unused void *addr, void *data, size_t len,
 			continue;
 
 		// Check for states
-		bool add;
-		if (is_addr)
+		bool add, noarp;
+		if (is_addr) {
 			add = (nh->nlmsg_type == RTM_NEWADDR);
-		else
+			noarp = false;
+		} else {
 			add = (nh->nlmsg_type == RTM_NEWNEIGH && (ndm->ndm_state &
 				(NUD_REACHABLE | NUD_STALE | NUD_DELAY | NUD_PROBE
 						| NUD_PERMANENT | NUD_NOARP)));
+			noarp = (ndm->ndm_state & NUD_NOARP);
+		}
 
 		if (config->enable_ndp_relay)
-			modify_neighbor(addr, iface, add);
+			modify_neighbor(addr, iface, add, noarp);
 
 		if (is_addr && config->enable_router_discovery_server)
 			raise(SIGUSR1); // Inform about a change in addresses
