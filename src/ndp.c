@@ -40,6 +40,8 @@ static void handle_rtnetlink(void *addr, void *data, size_t len,
 static struct ndp_neighbor* find_neighbor(struct in6_addr *addr, bool strict);
 static void modify_neighbor(struct in6_addr *addr, struct relayd_interface *iface,
 		bool add);
+static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
+		uint8_t *mac, const struct relayd_interface *iface);
 static ssize_t ping6(struct in6_addr *addr,
 		const struct relayd_interface *iface);
 
@@ -212,6 +214,45 @@ void deinit_ndp_proxy()
 }
 
 
+// Send advert
+static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
+		uint8_t *mac, const struct relayd_interface *iface)
+{
+	struct sockaddr_in6 dest = {AF_INET6, 0, 0, ALL_IPV6_NODES, 0};
+	struct nd_neighbor_advert advert = {
+		.nd_na_hdr = {ND_NEIGHBOR_ADVERT, 0, 0, {{0}}},
+		.nd_na_target = *addr
+	};
+	struct {
+		struct nd_opt_hdr hdr;
+		uint8_t mac[6];
+	} nd_opt_ll = {
+		.hdr = {ND_OPT_TARGET_LINKADDR, 1}
+	};
+	struct iovec iov[2] = {
+		{&advert, sizeof(advert)},
+		{&nd_opt_ll, sizeof(nd_opt_ll)}
+	};
+
+	advert.nd_na_flags_reserved = ND_NA_FLAG_ROUTER |
+		(source ? ND_NA_FLAG_SOLICITED : 0);
+
+	if (mac)
+		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
+	else
+		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
+
+	// If not DAD, then unicast to source
+	if (source && !IN6_IS_ADDR_UNSPECIFIED(&source))
+		dest.sin6_addr = *source;
+
+	// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
+	setsockopt(ping_socket, SOL_SOCKET, SO_BINDTODEVICE,
+				iface->ifname, sizeof(iface->ifname));
+	return relayd_forward_packet(ping_socket, &dest, iov, ARRAY_SIZE(iov), iface);
+}
+
+
 // Send an ICMP-ECHO. This is less for actually pinging but for the
 // neighbor cache to be kept up-to-date.
 static ssize_t ping6(struct in6_addr *addr,
@@ -272,32 +313,7 @@ static void handle_solicit(void *addr, void *data, size_t len,
 			return;
 
 		// Found on other interface, answer with advertisement
-		struct {
-			struct nd_neighbor_advert body;
-			struct nd_opt_hdr opt_ll_hdr;
-			uint8_t mac[6];
-		} advert = {
-			.body = {
-				.nd_na_hdr = {ND_NEIGHBOR_ADVERT,
-					0, 0, {{0}}},
-				.nd_na_target = req->nd_ns_target,
-			},
-			.opt_ll_hdr = {ND_OPT_TARGET_LINKADDR, 1},
-		};
-
-		memcpy(advert.mac, mac, sizeof(advert.mac));
-		advert.body.nd_na_flags_reserved = ND_NA_FLAG_ROUTER |
-				ND_NA_FLAG_SOLICITED;
-
-		struct sockaddr_in6 dest = {AF_INET6, 0, 0, ALL_IPV6_NODES, 0};
-		if (!ns_is_dad) // If not DAD, then unicast to source
-			dest.sin6_addr = ip6->ip6_src;
-
-		// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
-		setsockopt(ping_socket, SOL_SOCKET, SO_BINDTODEVICE,
-					iface->ifname, sizeof(iface->ifname));
-		struct iovec iov = {&advert, sizeof(advert)};
-		relayd_forward_packet(ping_socket, &dest, &iov, 1, iface);
+		send_advert(&req->nd_ns_target, &ip6->ip6_src, mac, iface);
 	} else {
 		// Send echo to all other interfaces to see where target is on
 		// This will trigger neighbor discovery which is what we want.
