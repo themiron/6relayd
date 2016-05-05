@@ -496,10 +496,10 @@ ssize_t relayd_forward_packet(int socket, struct sockaddr_in6 *dest,
 
 	ssize_t sent = sendmsg(socket, &msg, MSG_DONTWAIT);
 	if (sent < 0)
-		syslog(LOG_WARNING, "Failed to relay to %s%%%s (%s)",
+		syslog(LOG_NOTICE, "Failed to relay to %s%%%s (%s)",
 				ipbuf, iface->ifname, strerror(errno));
 	else
-		syslog(LOG_NOTICE, "Relayed %li bytes to %s%%%s",
+		syslog(LOG_DEBUG, "Relayed %li bytes to %s%%%s",
 				(long)sent, ipbuf, iface->ifname);
 	return sent;
 }
@@ -651,8 +651,8 @@ void relayd_receive_packets(struct relayd_event *event)
 		else if (addr.in6.sin6_family == AF_INET6)
 			inet_ntop(AF_INET6, &addr.in6.sin6_addr, ipbuf, sizeof(ipbuf));
 
-		syslog(LOG_NOTICE, "--");
-		syslog(LOG_NOTICE, "Received %li Bytes from %s%%%s", (long)len,
+		syslog(LOG_DEBUG, "--");
+		syslog(LOG_DEBUG, "Received %li Bytes from %s%%%s", (long)len,
 				ipbuf, (iface) ? iface->ifname : "netlink");
 
 		event->handle_dgram(&addr, data_buf, len, iface);
