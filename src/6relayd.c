@@ -541,6 +541,7 @@ ssize_t relayd_get_interface_addresses(int ifindex,
 
 		struct ifaddrmsg *ifa = NLMSG_DATA(nhm);
 		if (ifa->ifa_scope != RT_SCOPE_UNIVERSE ||
+				ifa->ifa_flags & IFA_F_TENTATIVE ||
 				ifa->ifa_index != (unsigned)ifindex)
 			continue;
 

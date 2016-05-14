@@ -658,7 +658,8 @@ static void handle_rtnetlink(_unused void *addr, void *data, size_t len,
 		// Check for states
 		bool add, noarp;
 		if (is_addr) {
-			add = (nh->nlmsg_type == RTM_NEWADDR);
+			add = (nh->nlmsg_type == RTM_NEWADDR) && !(ifa->ifa_flags &
+				IFA_F_TENTATIVE);
 			noarp = false;
 		} else {
 			add = (nh->nlmsg_type == RTM_NEWNEIGH && (ndm->ndm_state &
