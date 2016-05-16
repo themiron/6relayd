@@ -107,14 +107,14 @@ int init_router_discovery_relay(const struct relayd_config *relayd_config)
 				IPV6_ADD_MEMBERSHIP, &an, sizeof(an));
 	}
 
-	if (config->send_router_solicitation)
-		forward_router_solicitation(&config->master);
-
 	if (config->slavecount > 0 && (config->enable_router_discovery_relay ||
 			config->enable_router_discovery_server))
 		relayd_register_event(&router_discovery_event);
 	else
 		close(router_discovery_event.socket);
+
+	if (config->send_router_solicitation)
+		forward_router_solicitation(&config->master);
 
 	return 0;
 }
