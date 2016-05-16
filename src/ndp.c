@@ -290,7 +290,7 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
 
 	// If not DAD, then unicast to source
-	if (source && !IN6_IS_ADDR_UNSPECIFIED(&source))
+	if (source && !IN6_IS_ADDR_UNSPECIFIED(source))
 		dest.sin6_addr = *source;
 
 	// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
