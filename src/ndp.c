@@ -247,7 +247,7 @@ static ssize_t send_solicit(struct in6_addr *addr,
 		{&nd_opt_ll, sizeof(nd_opt_ll)}
 	};
 
-	if (iface->noarp)
+	if (iface->nondp)
 		iov[1].iov_len = 0;
 	else if (mac)
 		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
@@ -284,7 +284,7 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 	advert.nd_na_flags_reserved = ND_NA_FLAG_ROUTER |
 		(source ? ND_NA_FLAG_SOLICITED : 0);
 
-	if (iface->noarp)
+	if (iface->nondp)
 		iov[1].iov_len = 0;
 	else if (mac)
 		memcpy(nd_opt_ll.mac, mac, sizeof(nd_opt_ll.mac));
@@ -307,8 +307,8 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 static ssize_t ping6(struct in6_addr *addr,
 		const struct relayd_interface *iface)
 {
-	/* Send solicit directly */
-	if (iface->noarp)
+	// Send solicit directly
+	if (iface->nondp)
 		return (send_solicit(addr, NULL, iface) > 0);
 
 	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
@@ -329,6 +329,9 @@ static void handle_solicit(void *addr, void *data, size_t len,
 	struct ip6_hdr *ip6 = data;
 	struct nd_neighbor_solicit *req = (struct nd_neighbor_solicit*)&ip6[1];
 	struct sockaddr_ll *ll = addr;
+
+	if (iface->nondp && ll->sll_pkttype == PACKET_OUTGOING)
+		return; // Own solicitations to non-NDP link
 
 	// Solicitation is for duplicate address detection
 	bool ns_is_dad = IN6_IS_ADDR_UNSPECIFIED(&ip6->ip6_src);
@@ -362,7 +365,8 @@ static void handle_solicit(void *addr, void *data, size_t len,
 	if (n && (n->iface || abs(n->timeout - now) < 5)) {
 		syslog(LOG_NOTICE, "%s is on %s", ipbuf,
 				(n->iface) ? n->iface->ifname : "<pending>");
-		if (!n->iface || n->iface == iface)
+		if (!n->iface || n->iface == iface ||
+				ll->sll_pkttype == PACKET_OUTGOING)
 			return;
 
 		// Found on other interface, answer with advertisement
@@ -396,8 +400,8 @@ static void handle_advert(void *addr, void *data, size_t len,
 	struct nd_neighbor_advert *req = (struct nd_neighbor_advert*)&ip6[1];
 	struct sockaddr_ll *ll = addr;
 
-	if (!iface->noarp)
-		return;
+	if (!iface->nondp || ll->sll_pkttype == PACKET_OUTGOING)
+		return; // Own or kernel-driven adverts
 
 	if (len < sizeof(*ip6) + sizeof(*req))
 		return; // Invalid reqicitation
@@ -421,7 +425,7 @@ static void handle_advert(void *addr, void *data, size_t len,
 			ll->sll_pkttype != PACKET_OUTGOING)
 		return; // Looped back
 
-	modify_neighbor(&req->nd_na_target, iface, true, iface->noarp);
+	modify_neighbor(&req->nd_na_target, iface, true, iface->nondp);
 }
 
 

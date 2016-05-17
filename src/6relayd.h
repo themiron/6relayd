@@ -66,7 +66,7 @@ struct relayd_interface {
 	char ifname[IF_NAMESIZE];
 	uint8_t mac[6];
 	bool external;
-	bool noarp;
+	bool nondp;
 
 	struct relayd_event timer_rs;
 
