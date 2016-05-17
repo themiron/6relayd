@@ -165,6 +165,7 @@ static int open_icmpv6_socket(struct icmp6_filter *filt,
 	// We need to know the source interface
 	val = 1;
 	setsockopt(sock, IPPROTO_IPV6, IPV6_RECVPKTINFO, &val, sizeof(val));
+	setsockopt(sock, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &val, sizeof(val));
 
 	val = 0;
 	setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val));

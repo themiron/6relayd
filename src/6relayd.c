@@ -625,15 +625,23 @@ void relayd_receive_packets(struct relayd_event *event)
 
 		// Extract destination interface
 		int destiface = 0;
+		int *hlim = NULL;
 		struct in6_pktinfo *pktinfo;
-		for (struct cmsghdr *ch = CMSG_FIRSTHDR(&msg); ch != NULL &&
-				destiface == 0; ch = CMSG_NXTHDR(&msg, ch)) {
+		for (struct cmsghdr *ch = CMSG_FIRSTHDR(&msg); ch != NULL;
+				ch = CMSG_NXTHDR(&msg, ch)) {
 			if (ch->cmsg_level == IPPROTO_IPV6 &&
 					ch->cmsg_type == IPV6_PKTINFO) {
 				pktinfo = (struct in6_pktinfo*)CMSG_DATA(ch);
 				destiface = pktinfo->ipi6_ifindex;
+			} else if (ch->cmsg_level == IPPROTO_IPV6 &&
+					ch->cmsg_type == IPV6_HOPLIMIT) {
+				hlim = (int*)CMSG_DATA(ch);
 			}
 		}
+
+		// Check hoplimit if received
+		if (hlim && *hlim != 255)
+			continue;
 
 		// Detect interface for packet sockets
 		if (addr.ll.sll_family == AF_PACKET)

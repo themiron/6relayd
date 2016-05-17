@@ -63,7 +63,9 @@ static struct relayd_event rtnl_event = {-1, NULL, handle_rtnetlink};
 // Filter ICMPv6 messages of type neighbor soliciation
 static struct sock_filter bpf[] = {
 	BPF_STMT(BPF_LD | BPF_B | BPF_ABS, offsetof(struct ip6_hdr, ip6_nxt)),
-	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_ICMPV6, 0, 3),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_ICMPV6, 0, 5),
+	BPF_STMT(BPF_LD | BPF_B | BPF_ABS, offsetof(struct ip6_hdr, ip6_hlim)),
+	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, 255, 0, 3),
 	BPF_STMT(BPF_LD | BPF_B | BPF_ABS, sizeof(struct ip6_hdr) +
 			offsetof(struct icmp6_hdr, icmp6_type)),
 	BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, ND_NEIGHBOR_SOLICIT, 2, 0),
