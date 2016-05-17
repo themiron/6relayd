@@ -716,6 +716,14 @@ static void handle_rtnetlink(_unused void *addr, void *data, size_t len,
 				ifa->ifa_index = config->slaves[i].ifindex;
 				send(rtnl_event.socket, nh, nh->nlmsg_len, MSG_DONTWAIT);
 			}
+
+			if (nh->nlmsg_type == RTM_NEWADDR && iface->nondp &&
+					ifa->ifa_prefixlen > 0 &&
+					ifa->ifa_prefixlen < 128) {
+				// Drop on-link route from non-NDP link
+				relayd_setup_route(addr, ifa->ifa_prefixlen,
+						iface, NULL, 256, false);
+			}
 		}
 
 		/* TODO: See if this is required for optimal operation
