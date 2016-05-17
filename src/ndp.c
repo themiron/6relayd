@@ -238,7 +238,7 @@ void deinit_ndp_proxy()
 static ssize_t send_solicit(struct in6_addr *addr,
 		uint8_t *mac, const struct relayd_interface *iface)
 {
-	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
+	struct sockaddr_in6 dest = {AF_INET6, 0, 0, ALL_IPV6_NODES, 0};
 	struct nd_neighbor_solicit solicit = {
 		.nd_ns_hdr = {ND_NEIGHBOR_SOLICIT, 0, 0, {{0}}},
 		.nd_ns_target = *addr
@@ -299,8 +299,10 @@ static ssize_t send_advert(struct in6_addr *addr, struct in6_addr *source,
 		relayd_get_interface_mac(iface->ifname, nd_opt_ll.mac);
 
 	// If not DAD, then unicast to source
-	if (source && !IN6_IS_ADDR_UNSPECIFIED(source))
+	if (source && !IN6_IS_ADDR_UNSPECIFIED(source)) {
 		dest.sin6_addr = *source;
+		dest.sin6_scope_id = iface->ifindex;
+	}
 
 	// Linux seems to not honor IPV6_PKTINFO on raw-sockets, so work around
 	setsockopt(ping_socket, SOL_SOCKET, SO_BINDTODEVICE,
@@ -318,7 +320,7 @@ static ssize_t ping6(struct in6_addr *addr,
 	if (iface->nondp)
 		return (send_solicit(addr, NULL, iface) > 0);
 
-	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, 0};
+	struct sockaddr_in6 dest = {AF_INET6, 0, 0, *addr, iface->ifindex};
 	struct icmp6_hdr echo = {.icmp6_type = ICMP6_ECHO_REQUEST};
 	struct iovec iov = {&echo, sizeof(echo)};
 
@@ -692,7 +694,7 @@ static void handle_rtnetlink(_unused void *addr, void *data, size_t len,
 		else
 			add = (nh->nlmsg_type == RTM_NEWNEIGH && (ndm->ndm_state &
 				(NUD_REACHABLE | NUD_STALE | NUD_DELAY | NUD_PROBE
-						| NUD_PERMANENT | NUD_NOARP)));
+				| NUD_PERMANENT | (iface->nondp ? 0 : NUD_NOARP))));
 
 		if (config->enable_ndp_relay)
 			modify_neighbor(addr, iface, add, is_addr);
